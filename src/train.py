@@ -20,7 +20,7 @@ def train_model():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     
-    epochs = 100
+    epochs = 20 # Reduced for faster demo!
     batch_size = 32
     
     print("Starting training...")
@@ -43,8 +43,7 @@ def train_model():
             total_loss += loss.item()
             
         avg_loss = total_loss / (len(train_x) / batch_size)
-        if (epoch + 1) % 10 == 0:
-            print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.6f}")
+        print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.6f}")
             
     os.makedirs('../models', exist_ok=True)
     torch.save(model.state_dict(), '../models/fno_battery_model.pt')
