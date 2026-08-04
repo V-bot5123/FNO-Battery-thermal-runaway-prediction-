@@ -4,6 +4,8 @@ import torch
 from fno_model import FNO2d
 import uvicorn
 import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 app = FastAPI(
     title="FNO Battery Thermal Prediction API",
@@ -25,9 +27,16 @@ class SensorData(BaseModel):
     # Expecting a flat list of 4096 values (64x64 grid) or a 2D list
     grid: list[list[float]] 
 
+# Serve static files for the frontend UI
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/app")
+def read_index():
+    return FileResponse("static/index.html")
+
 @app.get("/")
 def read_root():
-    return {"message": "Battery Thermal FNO API is running. Send POST requests to /predict"}
+    return {"message": "Battery Thermal FNO API is running. Go to /app for the Visual UI or /docs for the API Docs."}
 
 @app.post("/predict")
 def predict_thermal_state(data: SensorData):
