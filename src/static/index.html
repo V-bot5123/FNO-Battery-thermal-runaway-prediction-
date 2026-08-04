@@ -3,12 +3,13 @@
 <head>
     <title>FNO Battery Predictor</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #121212; color: white; margin-top: 50px;}
-        .container { display: flex; justify-content: center; gap: 80px; margin-top: 40px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #121212; color: white; margin-top: 50px; padding-bottom: 50px;}
+        .container { display: flex; justify-content: center; gap: 50px; margin-top: 40px; padding-bottom: 40px; border-bottom: 1px solid #333;}
         .box { background: #1e1e1e; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
-        canvas { width: 300px; height: 300px; image-rendering: pixelated; border-radius: 5px; }
+        canvas { width: 250px; height: 250px; image-rendering: pixelated; border-radius: 5px; }
         button { padding: 15px 30px; font-size: 18px; cursor: pointer; background: #E50914; color: white; border: none; border-radius: 8px; font-weight: bold; transition: 0.2s;}
         button:hover { background: #ff1f2a; transform: scale(1.05); }
+        #history { display: flex; flex-direction: column; } 
     </style>
 </head>
 <body>
@@ -17,18 +18,8 @@
     
     <button onclick="runSimulation()" id="simBtn">Simulate Random Defect</button>
     
-    <div class="container">
-        <div class="box">
-            <h3 style="color: #ff9800;">Initial Sensor State (t=0)</h3>
-            <p style="font-size: 14px; color: #888;">Factory detects a sudden hot spot</p>
-            <canvas id="inputCanvas" width="64" height="64"></canvas>
-        </div>
-        <div class="box">
-            <h3 style="color: #4CAF50;">AI Prediction (t=1)</h3>
-            <p style="font-size: 14px; color: #888;">FNO predicts future heat spread</p>
-            <canvas id="outputCanvas" width="64" height="64"></canvas>
-        </div>
-    </div>
+    <!-- This div will hold all the historical rows we generate -->
+    <div id="history"></div>
 
     <script>
         // Heatmap color mapping function (Black -> Red -> Yellow -> White)
@@ -40,22 +31,24 @@
             return [r, g, b, 255];
         }
 
-        function drawGrid(canvasId, gridData) {
-            let canvas = document.getElementById(canvasId);
+        function drawGrid(canvas, gridData, normalize=true) {
             let ctx = canvas.getContext('2d');
             let imgData = ctx.createImageData(64, 64);
             
-            // The FNO might output values slightly out of bounds, so we normalize max value for display
             let maxVal = 0.01;
-            for(let y=0; y<64; y++) {
-                for(let x=0; x<64; x++) {
-                    if (gridData[y][x] > maxVal) maxVal = gridData[y][x];
+            if (normalize) {
+                for(let y=0; y<64; y++) {
+                    for(let x=0; x<64; x++) {
+                        if (gridData[y][x] > maxVal) maxVal = gridData[y][x];
+                    }
                 }
+            } else {
+                maxVal = 1.0;
             }
 
             for(let y=0; y<64; y++) {
                 for(let x=0; x<64; x++) {
-                    let val = gridData[y][x] / maxVal; // normalize to 0-1 for colors
+                    let val = gridData[y][x] / maxVal; 
                     let idx = (y * 64 + x) * 4;
                     let color = valToColor(val);
                     imgData.data[idx] = color[0];
@@ -67,29 +60,56 @@
             ctx.putImageData(imgData, 0, 0);
         }
 
-        // Draw empty screens on load
-        let emptyGrid = Array(64).fill().map(() => Array(64).fill(0));
-        drawGrid('inputCanvas', emptyGrid);
-        drawGrid('outputCanvas', emptyGrid);
-
         async function runSimulation() {
             document.getElementById('simBtn').innerText = "Predicting...";
             
-            // Create a fake 64x64 grid with a random hot spot
+            // Create fake 64x64 grids
             let grid = Array(64).fill().map(() => Array(64).fill(0));
+            let fea_grid = Array(64).fill().map(() => Array(64).fill(0));
+            
             let cx = Math.floor(Math.random() * 40) + 10;
             let cy = Math.floor(Math.random() * 40) + 10;
             
             for(let y=0; y<64; y++) {
                 for(let x=0; x<64; x++) {
                     let distSq = Math.pow(x-cx, 2) + Math.pow(y-cy, 2);
-                    grid[y][x] = Math.exp(-distSq / 15.0); // Size of hot spot
+                    grid[y][x] = Math.exp(-distSq / 15.0); // Initial Hot Spot
+                    
+                    // True FEA simulation math (Ground Truth Diffusion)
+                    fea_grid[y][x] = 0.5 * Math.exp(-distSq / 150.0); 
                 }
             }
             
-            drawGrid('inputCanvas', grid);
+            // Create a brand new row in the HTML
+            let row = document.createElement('div');
+            row.className = 'container';
+            row.innerHTML = `
+                <div class="box">
+                    <h3 style="color: #ff9800;">Initial State (t=0)</h3>
+                    <p style="font-size: 14px; color: #888;">Factory detects anomaly</p>
+                    <canvas width="64" height="64"></canvas>
+                </div>
+                <div class="box">
+                    <h3 style="color: #2196F3;">True Final State (FEA)</h3>
+                    <p style="font-size: 14px; color: #888;">Slow physics simulation</p>
+                    <canvas width="64" height="64"></canvas>
+                </div>
+                <div class="box">
+                    <h3 style="color: #4CAF50;">AI Prediction (t=1)</h3>
+                    <p style="font-size: 14px; color: #888;">FNO predicts instantly!</p>
+                    <canvas width="64" height="64"></canvas>
+                </div>
+            `;
+            
+            // Add the new row to the TOP of the history list
+            let historyDiv = document.getElementById('history');
+            historyDiv.insertBefore(row, historyDiv.firstChild);
 
-            // Send to our Python API
+            let canvases = row.getElementsByTagName('canvas');
+            drawGrid(canvases[0], grid, false);
+            drawGrid(canvases[1], fea_grid, true);
+
+            // Send initial grid to Python API
             try {
                 let res = await fetch('/predict', {
                     method: 'POST',
@@ -98,11 +118,12 @@
                 });
                 let data = await res.json();
                 
-                // Draw AI result
-                drawGrid('outputCanvas', data.predicted_heat_grid);
+                // Draw AI result in the 3rd canvas
+                drawGrid(canvases[2], data.predicted_heat_grid, true);
             } catch (err) {
                 alert("Error connecting to API. Is the server running?");
             }
+            
             document.getElementById('simBtn').innerText = "Simulate Random Defect";
         }
     </script>
